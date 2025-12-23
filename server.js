@@ -1,32 +1,49 @@
 const express = require('express');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
+const NODE_ENV = process.env.NODE_ENV || 'development';
 
-// Main route to serve Hello World
-app.get('/', (req, res) => {
-  res.status(200).send('Hello World');
+app.set('env', NODE_ENV);
+
+// Middleware for basic logging
+app.use((req, res, next) => {
+    const startTime = process.hrtime();
+
+    res.on('finish', () => {
+        const totalTime = process.hrtime(startTime);
+        const totalTimeInMs = totalTime[0] * 1000 + totalTime[1] / 1e6;
+        console.log(`${req.method} ${req.originalUrl} ${res.statusCode} - ${totalTimeInMs.toFixed(2)}ms`);
+    });
+    next();
 });
 
-// Health check endpoint for Kubernetes probes
+// Health check endpoint
 app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'UP', timestamp: new Date().toISOString() });
+    res.status(200).json({ status: 'healthy' });
 });
 
-// Start the server
-const server = app.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
+// Main application endpoint
+app.get('/', (req, res) => {
+    res.status(200).send('Hello World');
 });
 
-// Graceful shutdown handler
-const gracefulShutdown = () => {
-  console.log('Received shutdown signal, closing server gracefully.');
-  server.close(() => {
-    console.log('HTTP server closed.');
-    process.exit(0);
-  });
-};
+// Centralized error handling middleware
+app.use((err, req, res, next) => {
+    console.error(err.stack);
+    res.status(500).json({ error: 'Something went wrong!' });
+});
 
-process.on('SIGTERM', gracefulShutdown);
-process.on('SIGINT', gracefulShutdown);
+// Not found handler
+app.use((req, res) => {
+    res.status(404).json({ error: 'Not Found' });
+});
 
-module.exports = app; // Export for testing purposes
+// Start server only if this file is run directly
+if (require.main === module) {
+    app.listen(PORT, () => {
+        console.log(`Server is running on port ${PORT} in ${NODE_ENV} mode`);
+    });
+}
+
+module.exports = app;
